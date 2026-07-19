@@ -24,7 +24,9 @@ export default function ProductCard({ product }) {
       <div className="p-4">
         <h3 className="line-clamp-2 font-semibold">{product.productName}</h3>
         <p className="mt-1 text-indigo-600 font-bold">{formatVND(product.price)}</p>
-        <p className="mt-1 text-xs text-gray-500">In stock: {product.stockQuantity}</p>
+        <p className={`mt-1 text-xs ${product.stockQuantity > 0 ? "text-gray-500" : "font-medium text-red-600"}`}>
+          {product.stockQuantity > 0 ? `In stock: ${product.stockQuantity}` : "Out of stock"}
+        </p>
       </div>
     </Link>
   );

@@ -2,4 +2,8 @@ node_modules/
 .next/
 out/
 .env*.local
+.env
+.env.*
+!.env.local.example
+!.env.example
 .DS_Store

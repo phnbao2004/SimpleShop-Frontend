@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import api from "@/lib/api";
+import api, { getApiError } from "@/lib/api";
 import AdminGuard from "@/components/AdminGuard";
 import Spinner from "@/components/Spinner";
 
@@ -18,12 +18,16 @@ function StatCard({ label, value }) {
 function DashboardContent() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     api
       .get("/api/dashboard/stats")
       .then((r) => setStats(r.data))
-      .catch(() => setStats(null))
+      .catch((requestError) => {
+        setStats(null);
+        setError(getApiError(requestError, "Unable to load dashboard statistics."));
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -32,6 +36,7 @@ function DashboardContent() {
   return (
     <div>
       <h1 className="mb-6 text-2xl font-bold">Admin Dashboard</h1>
+      {error && <p className="mb-6 text-red-600">{error}</p>}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard label="Total Categories" value={stats?.totalCategories ?? 0} />
         <StatCard label="Total Products" value={stats?.totalProducts ?? 0} />

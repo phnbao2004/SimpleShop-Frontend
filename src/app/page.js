@@ -2,18 +2,22 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import api from "@/lib/api";
+import api, { getApiError } from "@/lib/api";
 import Spinner from "@/components/Spinner";
 
 export default function HomePage() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     api
       .get("/api/categories")
       .then((res) => setCategories(res.data))
-      .catch(() => setCategories([]))
+      .catch((requestError) => {
+        setCategories([]);
+        setError(getApiError(requestError, "Unable to load categories."));
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -22,7 +26,9 @@ export default function HomePage() {
   return (
     <div>
       <h1 className="mb-6 text-2xl font-bold">Shop by Category</h1>
-      {categories.length === 0 ? (
+      {error ? (
+        <p className="text-red-600">{error}</p>
+      ) : categories.length === 0 ? (
         <p className="text-gray-500">No categories available.</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

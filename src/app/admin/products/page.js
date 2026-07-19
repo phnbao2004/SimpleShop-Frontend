@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import api from "@/lib/api";
-import AdminGuard from "@/components/AdminGuard";
+import api, { getApiError } from "@/lib/api";
+import AuthGuard from "@/components/AuthGuard";
+import { useAuth } from "@/context/AuthContext";
 import Spinner from "@/components/Spinner";
 import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -20,6 +21,7 @@ const emptyForm = {
 };
 
 function ProductsContent() {
+  const { isAdmin } = useAuth();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,24 +31,25 @@ function ProductsContent() {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState({ open: false, id: null });
+  const [deletingId, setDeletingId] = useState(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [p, c] = await Promise.all([
-        api.get("/api/products/all"),
-        api.get("/api/categories/all"),
+        api.get(isAdmin ? "/api/products/all" : "/api/products/mine"),
+        api.get(isAdmin ? "/api/categories/all" : "/api/categories/mine"),
       ]);
       setProducts(p.data);
       setCategories(c.data);
-    } catch {
-      toast.error("Failed to load products");
+    } catch (error) {
+      toast.error(getApiError(error, "Failed to load products"));
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdmin]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const openCreate = () => {
     setEditing(null);
@@ -74,10 +77,10 @@ function ProductsContent() {
     const e = {};
     if (!form.productName.trim()) e.productName = "Name is required.";
     else if (form.productName.length > 200) e.productName = "Max 200 characters.";
-    if (form.price === "" || isNaN(Number(form.price)) || Number(form.price) < 0)
-      e.price = "Price must be >= 0.";
-    if (form.stockQuantity === "" || isNaN(Number(form.stockQuantity)) || Number(form.stockQuantity) < 0)
-      e.stockQuantity = "Stock must be >= 0.";
+    if (form.price === "" || !Number.isFinite(Number(form.price)) || Number(form.price) <= 0)
+      e.price = "Price must be greater than 0.";
+    if (form.stockQuantity === "" || !Number.isInteger(Number(form.stockQuantity)) || Number(form.stockQuantity) < 0)
+      e.stockQuantity = "Stock must be a whole number greater than or equal to 0.";
     if (!form.categoryID) e.categoryID = "Category is required.";
     if (form.imageUrl && form.imageUrl.length > 500) e.imageUrl = "Max 500 characters.";
     setErrors(e);
@@ -85,10 +88,11 @@ function ProductsContent() {
   };
 
   const handleSave = async () => {
+    if (saving) return;
     if (!validate()) return;
     setSaving(true);
     const payload = {
-      productName: form.productName,
+      productName: form.productName.trim(),
       description: form.description || null,
       price: Number(form.price),
       stockQuantity: Number(form.stockQuantity),
@@ -106,8 +110,8 @@ function ProductsContent() {
       }
       setModalOpen(false);
       load();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Save failed");
+    } catch (error) {
+      toast.error(getApiError(error, "Save failed"));
     } finally {
       setSaving(false);
     }
@@ -115,13 +119,17 @@ function ProductsContent() {
 
   const handleDelete = async () => {
     const id = confirm.id;
-    setConfirm({ open: false, id: null });
+    if (id === null || deletingId !== null) return;
+    setDeletingId(id);
     try {
       await api.delete(`/api/products/${id}`);
       toast.success("Product deactivated (soft-deleted)");
-      load();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Delete failed");
+      setConfirm({ open: false, id: null });
+      await load();
+    } catch (error) {
+      toast.error(getApiError(error, "Delete failed"));
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -164,7 +172,7 @@ function ProductsContent() {
                 </td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => openEdit(p)} className="mr-3 text-indigo-600 hover:underline">Edit</button>
-                  <button onClick={() => setConfirm({ open: true, id: p.productID })} className="text-red-600 hover:underline">Delete</button>
+                  <button disabled={deletingId !== null} onClick={() => setConfirm({ open: true, id: p.productID })} className="text-red-600 hover:underline disabled:opacity-50">Delete</button>
                 </td>
               </tr>
             ))}
@@ -186,12 +194,12 @@ function ProductsContent() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium">Price (VND)</label>
-              <input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="mt-1 w-full rounded border px-3 py-2 text-sm" />
+              <input type="number" min="0.01" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="mt-1 w-full rounded border px-3 py-2 text-sm" />
               {errors.price && <p className="mt-1 text-xs text-red-600">{errors.price}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium">Stock</label>
-              <input type="number" value={form.stockQuantity} onChange={(e) => setForm({ ...form, stockQuantity: e.target.value })} className="mt-1 w-full rounded border px-3 py-2 text-sm" />
+              <input type="number" min="0" step="1" value={form.stockQuantity} onChange={(e) => setForm({ ...form, stockQuantity: e.target.value })} className="mt-1 w-full rounded border px-3 py-2 text-sm" />
               {errors.stockQuantity && <p className="mt-1 text-xs text-red-600">{errors.stockQuantity}</p>}
             </div>
           </div>
@@ -229,6 +237,8 @@ function ProductsContent() {
         message="This product will be soft-deleted (set to inactive). Continue?"
         onConfirm={handleDelete}
         onCancel={() => setConfirm({ open: false, id: null })}
+        loading={deletingId !== null}
+        loadingText="Deactivating..."
       />
     </div>
   );
@@ -236,8 +246,8 @@ function ProductsContent() {
 
 export default function ProductsPage() {
   return (
-    <AdminGuard>
+    <AuthGuard>
       <ProductsContent />
-    </AdminGuard>
+    </AuthGuard>
   );
 }

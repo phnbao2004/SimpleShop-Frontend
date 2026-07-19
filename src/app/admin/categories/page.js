@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import api from "@/lib/api";
-import AdminGuard from "@/components/AdminGuard";
+import api, { getApiError } from "@/lib/api";
+import AuthGuard from "@/components/AuthGuard";
+import { useAuth } from "@/context/AuthContext";
 import Spinner from "@/components/Spinner";
 import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -11,6 +12,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 const emptyForm = { categoryName: "", categoryDescription: "", isActive: true };
 
 function CategoriesContent() {
+  const { isAdmin } = useAuth();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -19,20 +21,21 @@ function CategoriesContent() {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState({ open: false, id: null });
+  const [deletingId, setDeletingId] = useState(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get("/api/categories/all");
+      const res = await api.get(isAdmin ? "/api/categories/all" : "/api/categories/mine");
       setCategories(res.data);
-    } catch {
-      toast.error("Failed to load categories");
+    } catch (error) {
+      toast.error(getApiError(error, "Failed to load categories"));
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdmin]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const openCreate = () => {
     setEditing(null);
@@ -63,6 +66,7 @@ function CategoriesContent() {
   };
 
   const handleSave = async () => {
+    if (saving) return;
     if (!validate()) return;
     setSaving(true);
     try {
@@ -75,8 +79,8 @@ function CategoriesContent() {
       }
       setModalOpen(false);
       load();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Save failed");
+    } catch (error) {
+      toast.error(getApiError(error, "Save failed"));
     } finally {
       setSaving(false);
     }
@@ -84,13 +88,17 @@ function CategoriesContent() {
 
   const handleDelete = async () => {
     const id = confirm.id;
-    setConfirm({ open: false, id: null });
+    if (id === null || deletingId !== null) return;
+    setDeletingId(id);
     try {
       await api.delete(`/api/categories/${id}`);
       toast.success("Category deleted");
-      load();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Delete failed");
+      setConfirm({ open: false, id: null });
+      await load();
+    } catch (error) {
+      toast.error(getApiError(error, "Delete failed"));
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -129,7 +137,7 @@ function CategoriesContent() {
                 </td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => openEdit(c)} className="mr-3 text-indigo-600 hover:underline">Edit</button>
-                  <button onClick={() => setConfirm({ open: true, id: c.categoryID })} className="text-red-600 hover:underline">Delete</button>
+                  <button disabled={deletingId !== null} onClick={() => setConfirm({ open: true, id: c.categoryID })} className="text-red-600 hover:underline disabled:opacity-50">Delete</button>
                 </td>
               </tr>
             ))}
@@ -181,6 +189,8 @@ function CategoriesContent() {
         message="This category will be permanently deleted. It can only be deleted if no products are linked to it."
         onConfirm={handleDelete}
         onCancel={() => setConfirm({ open: false, id: null })}
+        loading={deletingId !== null}
+        loadingText="Deleting..."
       />
     </div>
   );
@@ -188,8 +198,8 @@ function CategoriesContent() {
 
 export default function CategoriesPage() {
   return (
-    <AdminGuard>
+    <AuthGuard>
       <CategoriesContent />
-    </AdminGuard>
+    </AuthGuard>
   );
 }
